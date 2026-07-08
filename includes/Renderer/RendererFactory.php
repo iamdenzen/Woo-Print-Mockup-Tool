@@ -7,8 +7,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 final class RendererFactory {
-	public static function make(): RendererInterface {
-		$engine = get_option( 'wpmt_render_engine', 'imagick' );
+	public function make(): RendererInterface {
+		$engine = get_option( 'wpmt_renderer_engine', 'imagick' );
 
 		if ( 'remote' === $engine ) {
 			return new RemoteRenderer();

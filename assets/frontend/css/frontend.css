@@ -1,2 +1,36 @@
-.wpmt-artwork-uploader { margin-top: 1.5rem; }
-.wpmt-preview-result { margin-top: 1rem; }
+.wpmt-artwork-uploader {
+	margin: 24px 0;
+	padding: 18px;
+	border: 1px solid #ddd;
+	background: #fafafa;
+}
+
+.wpmt-artwork-uploader h3 {
+	margin-top: 0;
+}
+
+.wpmt-artwork-file {
+	display: block;
+	margin: 10px 0;
+}
+
+.wpmt-generate-preview {
+	margin-top: 6px;
+}
+
+.wpmt-preview-status {
+	margin-top: 12px;
+	font-size: 14px;
+}
+
+.wpmt-preview-result {
+	margin-top: 16px;
+}
+
+.wpmt-preview-result img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border: 1px solid #ddd;
+	background: #fff;
+}
