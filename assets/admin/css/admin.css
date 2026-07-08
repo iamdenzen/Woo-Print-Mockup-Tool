@@ -1,1 +1,77 @@
-.wpmt-placement-canvas { margin: 12px; padding: 16px; border: 1px dashed #ccd0d4; }
+.wpmt-placement-canvas {
+	margin: 16px 12px;
+	padding: 20px;
+	border: 1px dashed #c3c4c7;
+	background: #f6f7f7;
+	color: #50575e;
+	min-height: 120px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+#wpmt_print_mockup_panel .form-field input[type="number"] {
+	width: 120px;
+}
+
+#wpmt_print_mockup_panel .description {
+	display: block;
+	margin-top: 4px;
+	color: #646970;
+}
+
+.wpmt-mockup-image-preview {
+	display: block;
+	margin: 0 0 10px;
+	max-width: 320px;
+}
+
+.wpmt-mockup-image-preview img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+	padding: 4px;
+}
+
+.wpmt-mockup-image-field .button {
+	margin-right: 6px;
+}
+
+.wpmt-editor-stage {
+	position: relative;
+	display: inline-block;
+	max-width: 100%;
+	line-height: 0;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+}
+
+.wpmt-editor-image {
+	display: block;
+	max-width: 100%;
+	height: auto;
+}
+
+.wpmt-editor-rect {
+	position: absolute;
+	display: none;
+	border: 2px solid #2271b1;
+	background: rgba(34, 113, 177, 0.12);
+	cursor: move;
+	box-sizing: border-box;
+}
+
+.wpmt-editor-rect::after {
+	content: "";
+	position: absolute;
+	right: -6px;
+	bottom: -6px;
+	width: 12px;
+	height: 12px;
+	background: #2271b1;
+	border: 2px solid #fff;
+	box-sizing: border-box;
+	cursor: nwse-resize;
+}

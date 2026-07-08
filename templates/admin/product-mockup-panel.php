@@ -32,21 +32,38 @@ $placement_data  = ! empty( $config['placement_data'] ) && is_array( $config['pl
 			/>
 		</p>
 
-		<p class="form-field">
+		<p class="form-field wpmt-mockup-image-field">
 			<label for="wpmt_mockup_image_id">
-				<?php esc_html_e( 'Mockup image ID', 'woo-print-mockup-tool' ); ?>
+				<?php esc_html_e( 'Mockup image', 'woo-print-mockup-tool' ); ?>
 			</label>
 
 			<input
-				type="number"
+				type="hidden"
 				id="wpmt_mockup_image_id"
 				name="wpmt_mockup_image_id"
 				value="<?php echo esc_attr( $mockup_image_id ); ?>"
-				min="0"
 			/>
 
+			<span class="wpmt-mockup-image-preview">
+				<?php if ( $mockup_image_id ) : ?>
+					<?php echo wp_get_attachment_image( $mockup_image_id, 'medium' ); ?>
+				<?php endif; ?>
+			</span>
+
+			<button type="button" class="button wpmt-select-mockup-image">
+				<?php esc_html_e( 'Select image', 'woo-print-mockup-tool' ); ?>
+			</button>
+
+			<button
+				type="button"
+				class="button wpmt-remove-mockup-image"
+				<?php echo $mockup_image_id ? '' : 'style="display:none;"'; ?>
+			>
+				<?php esc_html_e( 'Remove image', 'woo-print-mockup-tool' ); ?>
+			</button>
+
 			<span class="description">
-				<?php esc_html_e( 'Leave empty to use the product featured image later.', 'woo-print-mockup-tool' ); ?>
+				<?php esc_html_e( 'Choose the product image used for drawing the print/mockup area.', 'woo-print-mockup-tool' ); ?>
 			</span>
 		</p>
 
@@ -87,8 +104,22 @@ $placement_data  = ! empty( $config['placement_data'] ) && is_array( $config['pl
 			value="<?php echo esc_attr( $placement_data ); ?>"
 		/>
 
-		<div class="wpmt-placement-canvas">
-			<?php esc_html_e( 'Drawing canvas placeholder.', 'woo-print-mockup-tool' ); ?>
+		<?php
+		$mockup_image_url = $mockup_image_id ? wp_get_attachment_image_url( $mockup_image_id, 'large' ) : '';
+		?>
+
+		<div
+			class="wpmt-placement-canvas"
+			data-image-url="<?php echo esc_url( $mockup_image_url ); ?>"
+		>
+			<div class="wpmt-editor-empty">
+				<?php esc_html_e( 'Select a mockup image, save/update the product, then draw the print area here.', 'woo-print-mockup-tool' ); ?>
+			</div>
+
+			<div class="wpmt-editor-stage" style="display:none;">
+				<img class="wpmt-editor-image" src="" alt="" />
+				<div class="wpmt-editor-rect"></div>
+			</div>
 		</div>
 	</div>
 </div>
