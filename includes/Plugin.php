@@ -29,11 +29,17 @@ final class Plugin {
 			return;
 		}
 
-		( new AssetsServiceProvider() )->register();
-		( new AdminServiceProvider() )->register();
-		( new FrontendServiceProvider() )->register();
-		( new ApiServiceProvider() )->register();
-		( new CleanupService() )->register();
+		$providers = [
+			AssetsServiceProvider::class,
+			AdminServiceProvider::class,
+			FrontendServiceProvider::class,
+			ApiServiceProvider::class,
+			CleanupService::class,
+		];
+
+		foreach ( $providers as $provider ) {
+			( new $provider() )->register();
+		}
 	}
 
 	public function woocommerce_missing_notice(): void {

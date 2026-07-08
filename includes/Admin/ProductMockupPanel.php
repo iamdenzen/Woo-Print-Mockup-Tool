@@ -2,6 +2,8 @@
 
 namespace WooPrintMockupTool\Admin;
 
+use WooPrintMockupTool\Services\ProductConfigRepository;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -25,6 +27,11 @@ final class ProductMockupPanel {
 	}
 
 	public function render_panel(): void {
+		global $post;
+
+		$product_id = $post ? (int) $post->ID : 0;
+		$config     = $product_id > 0 ? ( new ProductConfigRepository() )->get_by_product_id( $product_id ) : null;
+
 		include WPMT_PLUGIN_DIR . 'templates/admin/product-mockup-panel.php';
 	}
 
@@ -33,6 +40,30 @@ final class ProductMockupPanel {
 			return;
 		}
 
-		// Save through a repository/service in the next implementation step.
+		if (
+			empty( $_POST['wpmt_product_mockup_nonce'] ) ||
+			! wp_verify_nonce(
+				sanitize_text_field( wp_unslash( $_POST['wpmt_product_mockup_nonce'] ) ),
+				'wpmt_save_product_mockup'
+			)
+		) {
+			return;
+		}
+
+		$data = [
+			'enabled'         => isset( $_POST['wpmt_enabled'] ) ? 1 : 0,
+			'mockup_image_id' => isset( $_POST['wpmt_mockup_image_id'] ) ? absint( $_POST['wpmt_mockup_image_id'] ) : 0,
+			'placement_type'  => isset( $_POST['wpmt_placement_type'] )
+				? sanitize_key( wp_unslash( $_POST['wpmt_placement_type'] ) )
+				: 'rectangle',
+			'placement_data'  => isset( $_POST['wpmt_placement_data'] )
+				? wp_unslash( $_POST['wpmt_placement_data'] )
+				: '',
+			'render_mode'     => isset( $_POST['wpmt_render_mode'] )
+				? sanitize_key( wp_unslash( $_POST['wpmt_render_mode'] ) )
+				: 'color',
+		];
+
+		( new ProductConfigRepository() )->upsert( $product_id, $data );
 	}
 }

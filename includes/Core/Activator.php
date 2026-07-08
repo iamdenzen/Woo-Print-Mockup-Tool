@@ -17,5 +17,7 @@ final class Activator {
 		if ( ! wp_next_scheduled( 'wpmt_cleanup_expired_mockups' ) ) {
 			wp_schedule_event( time() + HOUR_IN_SECONDS, 'hourly', 'wpmt_cleanup_expired_mockups' );
 		}
+
+		flush_rewrite_rules();
 	}
 }
