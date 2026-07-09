@@ -29,10 +29,10 @@
 
 		var data = {
 			type: 'rectangle',
-			x: Math.round(parseFloat($rect.css('left')) || 0),
-			y: Math.round(parseFloat($rect.css('top')) || 0),
-			width: Math.round($rect.outerWidth()),
-			height: Math.round($rect.outerHeight()),
+			left: Number(((parseFloat($rect.css('left')) || 0) / stageWidth).toFixed(6)),
+			top: Number(((parseFloat($rect.css('top')) || 0) / stageHeight).toFixed(6)),
+			width: Number(($rect.outerWidth() / stageWidth).toFixed(6)),
+			height: Number(($rect.outerHeight() / stageHeight).toFixed(6)),
 			stage_width: Math.round(stageWidth),
 			stage_height: Math.round(stageHeight)
 		};
@@ -60,11 +60,30 @@
 
 		$image.on('load', function () {
 			if (placement.type === 'rectangle' && placement.width && placement.height) {
+				var stageWidth = $stage.width();
+				var stageHeight = $stage.height();
+
+				var left = placement.left !== undefined
+					? placement.left * stageWidth
+					: placement.x || 0;
+
+				var top = placement.top !== undefined
+					? placement.top * stageHeight
+					: placement.y || 0;
+
+				var width = placement.left !== undefined
+					? placement.width * stageWidth
+					: placement.width;
+
+				var height = placement.top !== undefined
+					? placement.height * stageHeight
+					: placement.height;
+
 				$rect.css({
-					left: placement.x + 'px',
-					top: placement.y + 'px',
-					width: placement.width + 'px',
-					height: placement.height + 'px',
+					left: left + 'px',
+					top: top + 'px',
+					width: width + 'px',
+					height: height + 'px',
 					display: 'block'
 				});
 			} else {

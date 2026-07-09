@@ -58,10 +58,23 @@ final class ImagickRenderer implements RendererInterface {
 			];
 		}
 
-		$x      = isset( $placement['x'] ) ? (int) $placement['x'] : 0;
-		$y      = isset( $placement['y'] ) ? (int) $placement['y'] : 0;
-		$width  = isset( $placement['width'] ) ? (int) $placement['width'] : 0;
-		$height = isset( $placement['height'] ) ? (int) $placement['height'] : 0;
+		$mockup_probe = new \Imagick( $args['mockup_path'] );
+		$mockup_width = $mockup_probe->getImageWidth();
+		$mockup_height = $mockup_probe->getImageHeight();
+		$mockup_probe->clear();
+		$mockup_probe->destroy();
+
+		if ( isset( $placement['left'], $placement['top'], $placement['width'], $placement['height'] ) ) {
+			$x      = (int) round( (float) $placement['left'] * $mockup_width );
+			$y      = (int) round( (float) $placement['top'] * $mockup_height );
+			$width  = (int) round( (float) $placement['width'] * $mockup_width );
+			$height = (int) round( (float) $placement['height'] * $mockup_height );
+		} else {
+			$x      = isset( $placement['x'] ) ? (int) $placement['x'] : 0;
+			$y      = isset( $placement['y'] ) ? (int) $placement['y'] : 0;
+			$width  = isset( $placement['width'] ) ? (int) $placement['width'] : 0;
+			$height = isset( $placement['height'] ) ? (int) $placement['height'] : 0;
+		}
 
 		if ( $width <= 0 || $height <= 0 ) {
 			return [
