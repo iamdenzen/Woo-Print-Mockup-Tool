@@ -30,10 +30,13 @@
 			status.textContent = 'Generating preview...';
 			result.innerHTML = '';
 
-			fetch('/wp-json/wpmt/v1/preview', {
+			fetch(WPMTFrontend.restUrl, {
 				method: 'POST',
 				body: formData,
-				credentials: 'same-origin'
+				credentials: 'same-origin',
+				headers: {
+					'X-WP-Nonce': WPMTFrontend.nonce
+				}
 			})
 				.then(function (response) {
 					return response.json();

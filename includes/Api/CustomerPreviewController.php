@@ -21,8 +21,15 @@ final class CustomerPreviewController {
 			[
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => [ $this, 'create' ],
-				'permission_callback' => '__return_true',
+				'permission_callback' => [ $this, 'can_preview' ],
 			]
+		);
+	}
+
+	public function can_preview( WP_REST_Request $request ): bool {
+		return wp_verify_nonce(
+			(string) $request->get_header( 'X-WP-Nonce' ),
+			'wp_rest'
 		);
 	}
 

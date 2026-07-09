@@ -65,5 +65,14 @@ final class AssetsServiceProvider {
 
 		wp_enqueue_script( 'wpmt-frontend' );
 		wp_enqueue_style( 'wpmt-frontend' );
+
+		wp_localize_script(
+			'wpmt-frontend',
+			'WPMTFrontend',
+			[
+				'restUrl' => esc_url_raw( rest_url( 'wpmt/v1/preview' ) ),
+				'nonce'   => wp_create_nonce( 'wp_rest' ),
+			]
+		);
 	}
 }
