@@ -150,15 +150,19 @@
 		});
 
 		perspectivePolygon.setCoords();
-		perspectivePolygon.sendToBack();
+
+		// Fabric v6: stacking order is controlled via canvas methods,
+		// not object instance methods (sendToBack/bringForward/bringToFront
+		// no longer exist on the objects themselves).
+		fabricCanvas.sendObjectToBack(perspectivePolygon);
 
 		if (backgroundImage) {
-			backgroundImage.sendToBack();
-			perspectivePolygon.bringForward();
+			fabricCanvas.sendObjectToBack(backgroundImage);
+			fabricCanvas.bringObjectForward(perspectivePolygon);
 		}
 
 		perspectivePoints.forEach(function (point) {
-			point.bringToFront();
+			fabricCanvas.bringObjectToFront(point);
 		});
 
 		fabricCanvas.requestRenderAll();
@@ -375,7 +379,7 @@
 			backgroundImage = image;
 
 			fabricCanvas.add(backgroundImage);
-			backgroundImage.sendToBack();
+			fabricCanvas.sendObjectToBack(backgroundImage);
 
 			$('.wpmt-editor-empty').hide();
 			$('.wpmt-editor-canvas-wrap').prop('hidden', false);
@@ -544,8 +548,18 @@
 				$('#wpmt-placement-editor')
 					.attr('data-image-url', editorUrl);
 
+				// initializeEditor() already loads the image itself the first
+				// time it runs (it reads data-image-url and calls
+				// loadEditorImage internally). Only call loadEditorImage here
+				// explicitly if the editor was already set up, otherwise we'd
+				// trigger two concurrent loads of the same image.
+				var wasInitialized = editorInitialized;
+
 				initializeEditor();
-				loadEditorImage(editorUrl);
+
+				if (wasInitialized) {
+					loadEditorImage(editorUrl);
+				}
 			});
 
 			mediaFrame.open();
