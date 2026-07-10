@@ -425,7 +425,7 @@ final class ImagickRenderer implements RendererInterface {
 
 		$image->colorizeImage(
 			new \ImagickPixel( '#6f6f6f' ),
-			0.65
+			new \ImagickPixel( 'rgb(65%,65%,65%)' )   // was: 0.65
 		);
 
 		$image->evaluateImage(
