@@ -16,7 +16,15 @@ final class AssetsServiceProvider {
 		wp_register_script(
 			'wpmt-admin',
 			WPMT_PLUGIN_URL . 'assets/admin/js/admin.js',
-			[ 'jquery', 'media-editor', 'media-views' ],
+			[ 'jquery', 'media-editor', 'media-views', 'wpmt-fabric' ],
+			WPMT_VERSION,
+			true
+		);
+
+		wp_register_script(
+			'wpmt-fabric',
+			'https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js',
+			[],
 			WPMT_VERSION,
 			true
 		);
@@ -39,6 +47,7 @@ final class AssetsServiceProvider {
 		}
 
 		wp_enqueue_media();
+		wp_enqueue_script( 'wpmt-fabric' );
 		wp_enqueue_script( 'wpmt-admin' );
 		wp_enqueue_style( 'wpmt-admin' );
 	}

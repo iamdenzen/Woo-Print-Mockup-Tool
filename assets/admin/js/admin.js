@@ -1,7 +1,15 @@
 (function ($) {
 	'use strict';
 
-	function normalizePlacementData(raw) {
+	var fabricCanvas = null;
+	var backgroundImage = null;
+	var rectangle = null;
+	var perspectivePolygon = null;
+	var perspectivePoints = [];
+	var editorInitialized = false;
+	var editorImageUrl = '';
+
+	function parsePlacementData(raw) {
 		if (!raw) {
 			return {};
 		}
@@ -12,195 +20,478 @@
 			if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
 				return parsed;
 			}
-		} catch (e) {
+		} catch (error) {
 			return {};
 		}
 
 		return {};
 	}
 
-	function saveRectangle($stage, $rect) {
-		var stageWidth = $stage.width();
-		var stageHeight = $stage.height();
+	function clamp(value, min, max) {
+		return Math.min(Math.max(value, min), max);
+	}
 
-		if (!stageWidth || !stageHeight) {
+	function getCanvasDimensions(image) {
+		var maxWidth = 760;
+		var maxHeight = 620;
+		var width = image.width || 1;
+		var height = image.height || 1;
+		var scale = Math.min(maxWidth / width, maxHeight / height, 1);
+
+		return {
+			width: Math.round(width * scale),
+			height: Math.round(height * scale),
+			scale: scale
+		};
+	}
+
+	function clearPlacementObjects() {
+		if (!fabricCanvas) {
+			return;
+		}
+
+		if (rectangle) {
+			fabricCanvas.remove(rectangle);
+			rectangle = null;
+		}
+
+		perspectivePoints.forEach(function (point) {
+			fabricCanvas.remove(point);
+		});
+
+		perspectivePoints = [];
+
+		if (perspectivePolygon) {
+			fabricCanvas.remove(perspectivePolygon);
+			perspectivePolygon = null;
+		}
+
+		fabricCanvas.discardActiveObject();
+		fabricCanvas.requestRenderAll();
+	}
+
+	function saveRectangle() {
+		if (!fabricCanvas || !rectangle) {
+			return;
+		}
+
+		var canvasWidth = fabricCanvas.getWidth();
+		var canvasHeight = fabricCanvas.getHeight();
+
+		var left = rectangle.left || 0;
+		var top = rectangle.top || 0;
+		var width = rectangle.getScaledWidth();
+		var height = rectangle.getScaledHeight();
+
+		var data = {
+			type: 'rectangle',
+			left: Number((left / canvasWidth).toFixed(6)),
+			top: Number((top / canvasHeight).toFixed(6)),
+			width: Number((width / canvasWidth).toFixed(6)),
+			height: Number((height / canvasHeight).toFixed(6))
+		};
+
+		$('#wpmt_placement_type').val('rectangle');
+		$('#wpmt_placement_data').val(JSON.stringify(data));
+	}
+
+	function getPerspectiveCoordinates() {
+		var canvasWidth = fabricCanvas.getWidth();
+		var canvasHeight = fabricCanvas.getHeight();
+
+		return perspectivePoints.map(function (point) {
+			return {
+				x: Number(((point.left || 0) / canvasWidth).toFixed(6)),
+				y: Number(((point.top || 0) / canvasHeight).toFixed(6))
+			};
+		});
+	}
+
+	function savePerspective() {
+		if (!fabricCanvas || perspectivePoints.length !== 4) {
 			return;
 		}
 
 		var data = {
-			type: 'rectangle',
-			left: Number(((parseFloat($rect.css('left')) || 0) / stageWidth).toFixed(6)),
-			top: Number(((parseFloat($rect.css('top')) || 0) / stageHeight).toFixed(6)),
-			width: Number(($rect.outerWidth() / stageWidth).toFixed(6)),
-			height: Number(($rect.outerHeight() / stageHeight).toFixed(6)),
-			stage_width: Math.round(stageWidth),
-			stage_height: Math.round(stageHeight)
+			type: 'perspective',
+			points: getPerspectiveCoordinates()
 		};
 
+		$('#wpmt_placement_type').val('perspective');
 		$('#wpmt_placement_data').val(JSON.stringify(data));
 	}
 
-	function initRectangleEditor() {
-		var $canvas = $('.wpmt-placement-canvas');
-		var imageUrl = $canvas.data('image-url');
-
-		if (!$canvas.length || !imageUrl) {
+	function updatePerspectivePolygon() {
+		if (
+			!fabricCanvas ||
+			!perspectivePolygon ||
+			perspectivePoints.length !== 4
+		) {
 			return;
 		}
 
-		var $empty = $canvas.find('.wpmt-editor-empty');
-		var $stage = $canvas.find('.wpmt-editor-stage');
-		var $image = $canvas.find('.wpmt-editor-image');
-		var $rect = $canvas.find('.wpmt-editor-rect');
-		var placement = normalizePlacementData($('#wpmt_placement_data').val());
+		var points = perspectivePoints.map(function (point) {
+			return {
+				x: point.left || 0,
+				y: point.top || 0
+			};
+		});
 
-		$empty.hide();
-		$stage.show();
-		$image.attr('src', imageUrl);
-
-		$image.on('load', function () {
-			if (placement.type === 'rectangle' && placement.width && placement.height) {
-				var stageWidth = $stage.width();
-				var stageHeight = $stage.height();
-
-				var left = placement.left !== undefined
-					? placement.left * stageWidth
-					: placement.x || 0;
-
-				var top = placement.top !== undefined
-					? placement.top * stageHeight
-					: placement.y || 0;
-
-				var width = placement.left !== undefined
-					? placement.width * stageWidth
-					: placement.width;
-
-				var height = placement.top !== undefined
-					? placement.height * stageHeight
-					: placement.height;
-
-				$rect.css({
-					left: left + 'px',
-					top: top + 'px',
-					width: width + 'px',
-					height: height + 'px',
-					display: 'block'
-				});
-			} else {
-				$rect.css({
-					left: '40px',
-					top: '40px',
-					width: '180px',
-					height: '90px',
-					display: 'block'
-				});
-
-				saveRectangle($stage, $rect);
+		perspectivePolygon.set({
+			points: points,
+			left: 0,
+			top: 0,
+			width: fabricCanvas.getWidth(),
+			height: fabricCanvas.getHeight(),
+			pathOffset: {
+				x: 0,
+				y: 0
 			}
 		});
 
-		var dragging = false;
-		var resizing = false;
-		var startX = 0;
-		var startY = 0;
-		var startLeft = 0;
-		var startTop = 0;
-		var startWidth = 0;
-		var startHeight = 0;
+		perspectivePolygon.setCoords();
+		perspectivePolygon.sendToBack();
 
-		$rect.on('mousedown', function (event) {
-			event.preventDefault();
+		if (backgroundImage) {
+			backgroundImage.sendToBack();
+			perspectivePolygon.bringForward();
+		}
 
-			var rectOffset = $rect.offset();
-			var rightEdge = rectOffset.left + $rect.outerWidth();
-			var bottomEdge = rectOffset.top + $rect.outerHeight();
-
-			startX = event.pageX;
-			startY = event.pageY;
-			startLeft = parseFloat($rect.css('left')) || 0;
-			startTop = parseFloat($rect.css('top')) || 0;
-			startWidth = $rect.outerWidth();
-			startHeight = $rect.outerHeight();
-
-			resizing = event.pageX > rightEdge - 14 && event.pageY > bottomEdge - 14;
-			dragging = !resizing;
+		perspectivePoints.forEach(function (point) {
+			point.bringToFront();
 		});
 
-		$(document).on('mousemove.wpmtEditor', function (event) {
-			if (!dragging && !resizing) {
-				return;
-			}
+		fabricCanvas.requestRenderAll();
+		savePerspective();
+	}
 
-			var deltaX = event.pageX - startX;
-			var deltaY = event.pageY - startY;
+	function createRectangle(placement) {
+		clearPlacementObjects();
 
-			if (dragging) {
-				$rect.css({
-					left: Math.max(0, startLeft + deltaX) + 'px',
-					top: Math.max(0, startTop + deltaY) + 'px'
-				});
-			}
+		var canvasWidth = fabricCanvas.getWidth();
+		var canvasHeight = fabricCanvas.getHeight();
 
-			if (resizing) {
-				$rect.css({
-					width: Math.max(20, startWidth + deltaX) + 'px',
-					height: Math.max(20, startHeight + deltaY) + 'px'
-				});
-			}
+		var left = 0.2 * canvasWidth;
+		var top = 0.3 * canvasHeight;
+		var width = 0.35 * canvasWidth;
+		var height = 0.2 * canvasHeight;
 
-			saveRectangle($stage, $rect);
+		if (
+			placement &&
+			placement.type === 'rectangle' &&
+			typeof placement.left !== 'undefined'
+		) {
+			left = placement.left * canvasWidth;
+			top = placement.top * canvasHeight;
+			width = placement.width * canvasWidth;
+			height = placement.height * canvasHeight;
+		}
+
+		rectangle = new fabric.Rect({
+			left: left,
+			top: top,
+			width: width,
+			height: height,
+			fill: 'rgba(34, 113, 177, 0.15)',
+			stroke: '#2271b1',
+			strokeWidth: 2,
+			transparentCorners: false,
+			cornerColor: '#2271b1',
+			cornerStrokeColor: '#ffffff',
+			borderColor: '#2271b1',
+			cornerSize: 12,
+			lockRotation: true,
+			hasRotatingPoint: false
 		});
 
-		$(document).on('mouseup.wpmtEditor', function () {
-			dragging = false;
-			resizing = false;
+		rectangle.setControlsVisibility({
+			mtr: false
+		});
+
+		rectangle.on('moving', constrainRectangle);
+		rectangle.on('scaling', constrainRectangle);
+		rectangle.on('modified', saveRectangle);
+
+		fabricCanvas.add(rectangle);
+		fabricCanvas.setActiveObject(rectangle);
+		fabricCanvas.requestRenderAll();
+
+		saveRectangle();
+	}
+
+	function constrainRectangle() {
+		if (!rectangle || !fabricCanvas) {
+			return;
+		}
+
+		var canvasWidth = fabricCanvas.getWidth();
+		var canvasHeight = fabricCanvas.getHeight();
+		var width = rectangle.getScaledWidth();
+		var height = rectangle.getScaledHeight();
+
+		if (width > canvasWidth) {
+			rectangle.scaleX = canvasWidth / rectangle.width;
+			width = canvasWidth;
+		}
+
+		if (height > canvasHeight) {
+			rectangle.scaleY = canvasHeight / rectangle.height;
+			height = canvasHeight;
+		}
+
+		rectangle.left = clamp(rectangle.left || 0, 0, canvasWidth - width);
+		rectangle.top = clamp(rectangle.top || 0, 0, canvasHeight - height);
+
+		rectangle.setCoords();
+		saveRectangle();
+	}
+
+	function createPerspective(placement) {
+		clearPlacementObjects();
+
+		var canvasWidth = fabricCanvas.getWidth();
+		var canvasHeight = fabricCanvas.getHeight();
+
+		var defaultPoints = [
+			{ x: 0.25, y: 0.30 },
+			{ x: 0.65, y: 0.30 },
+			{ x: 0.65, y: 0.55 },
+			{ x: 0.25, y: 0.55 }
+		];
+
+		var savedPoints =
+			placement &&
+			placement.type === 'perspective' &&
+			Array.isArray(placement.points) &&
+			placement.points.length === 4
+				? placement.points
+				: defaultPoints;
+
+		var polygonPoints = savedPoints.map(function (point) {
+			return {
+				x: point.x * canvasWidth,
+				y: point.y * canvasHeight
+			};
+		});
+
+		perspectivePolygon = new fabric.Polygon(polygonPoints, {
+			left: 0,
+			top: 0,
+			fill: 'rgba(214, 54, 56, 0.12)',
+			stroke: '#d63638',
+			strokeWidth: 2,
+			selectable: false,
+			evented: false,
+			objectCaching: false
+		});
+
+		fabricCanvas.add(perspectivePolygon);
+
+		perspectivePoints = polygonPoints.map(function (point, index) {
+			var handle = new fabric.Circle({
+				left: point.x,
+				top: point.y,
+				radius: 7,
+				fill: '#d63638',
+				stroke: '#ffffff',
+				strokeWidth: 2,
+				originX: 'center',
+				originY: 'center',
+				hasControls: false,
+				hasBorders: false,
+				lockScalingX: true,
+				lockScalingY: true,
+				lockRotation: true,
+				hoverCursor: 'move',
+				data: {
+					pointIndex: index
+				}
+			});
+
+			handle.on('moving', function () {
+				handle.left = clamp(handle.left || 0, 0, canvasWidth);
+				handle.top = clamp(handle.top || 0, 0, canvasHeight);
+				handle.setCoords();
+
+				updatePerspectivePolygon();
+			});
+
+			handle.on('modified', updatePerspectivePolygon);
+
+			fabricCanvas.add(handle);
+
+			return handle;
+		});
+
+		updatePerspectivePolygon();
+	}
+
+	function restorePlacement() {
+		var placement = parsePlacementData(
+			$('#wpmt_placement_data').val()
+		);
+
+		var selectedType = $('#wpmt_placement_type').val();
+
+		if (placement.type === 'perspective' || selectedType === 'perspective') {
+			createPerspective(placement);
+			return;
+		}
+
+		createRectangle(placement);
+	}
+
+	function loadEditorImage(imageUrl) {
+		if (!fabricCanvas || !imageUrl) {
+			return;
+		}
+
+		editorImageUrl = imageUrl;
+
+		fabric.FabricImage.fromURL(imageUrl, {
+			crossOrigin: 'anonymous'
+		}).then(function (image) {
+			var dimensions = getCanvasDimensions(image);
+
+			fabricCanvas.setDimensions({
+				width: dimensions.width,
+				height: dimensions.height
+			});
+
+			image.scale(dimensions.scale);
+			image.set({
+				left: 0,
+				top: 0,
+				selectable: false,
+				evented: false,
+				originX: 'left',
+				originY: 'top'
+			});
+
+			if (backgroundImage) {
+				fabricCanvas.remove(backgroundImage);
+			}
+
+			backgroundImage = image;
+
+			fabricCanvas.add(backgroundImage);
+			backgroundImage.sendToBack();
+
+			$('.wpmt-editor-empty').hide();
+			$('.wpmt-editor-canvas-wrap').prop('hidden', false);
+
+			restorePlacement();
+			fabricCanvas.requestRenderAll();
+		}).catch(function () {
+			$('.wpmt-editor-empty')
+				.text('The selected mockup image could not be loaded.')
+				.show();
 		});
 	}
 
-	$(function () {
-		var $placementData = $('#wpmt_placement_data');
-
-		if (!$placementData.length) {
+	function initializeEditor() {
+		if (editorInitialized) {
+			fabricCanvas.calcOffset();
+			fabricCanvas.requestRenderAll();
 			return;
 		}
 
-		var placement = normalizePlacementData($placementData.val());
+		var editor = document.getElementById('wpmt-placement-editor');
+		var canvasElement = document.getElementById('wpmt-placement-canvas');
 
-		if (!Object.keys(placement).length) {
-			$placementData.val(JSON.stringify({
-				type: $('#wpmt_placement_type').val() || 'rectangle',
-				x: 0,
-				y: 0,
-				width: 0,
-				height: 0
-			}));
+		if (!editor || !canvasElement || typeof fabric === 'undefined') {
+			return;
 		}
 
-		$('#wpmt_placement_type').on('change', function () {
-			var type = $(this).val();
+		editorImageUrl = editor.getAttribute('data-image-url') || '';
 
-			if (type === 'perspective') {
-				$placementData.val(JSON.stringify({
-					type: 'perspective',
-					points: [
-						{ x: 0, y: 0 },
-						{ x: 0, y: 0 },
-						{ x: 0, y: 0 },
-						{ x: 0, y: 0 }
-					]
-				}));
+		fabricCanvas = new fabric.Canvas(canvasElement, {
+			preserveObjectStacking: true,
+			selection: false
+		});
+
+		editorInitialized = true;
+
+		if (editorImageUrl) {
+			loadEditorImage(editorImageUrl);
+		}
+	}
+
+	function initializeWhenTabVisible() {
+		var panel = $('#wpmt_print_mockup_panel');
+
+		if (!panel.length || !panel.is(':visible')) {
+			return;
+		}
+
+		initializeEditor();
+	}
+
+	function bindEditorButtons() {
+		$('.wpmt-set-rectangle').on('click', function () {
+			initializeEditor();
+
+			if (!fabricCanvas || !backgroundImage) {
 				return;
 			}
 
-			$placementData.val(JSON.stringify({
-				type: 'rectangle',
-				x: 0,
-				y: 0,
-				width: 0,
-				height: 0
-			}));
+			createRectangle({});
 		});
 
+		$('.wpmt-set-perspective').on('click', function () {
+			initializeEditor();
+
+			if (!fabricCanvas || !backgroundImage) {
+				return;
+			}
+
+			createPerspective({});
+		});
+
+		$('.wpmt-reset-placement').on('click', function () {
+			if (!fabricCanvas || !backgroundImage) {
+				return;
+			}
+
+			$('#wpmt_placement_data').val('{}');
+
+			if ($('#wpmt_placement_type').val() === 'perspective') {
+				createPerspective({});
+				return;
+			}
+
+			createRectangle({});
+		});
+
+		$('#wpmt_placement_type').on('change', function () {
+			if (!fabricCanvas || !backgroundImage) {
+				return;
+			}
+
+			if ($(this).val() === 'perspective') {
+				createPerspective({});
+				return;
+			}
+
+			createRectangle({});
+		});
+	}
+
+	function bindWooCommerceTab() {
+		$(document.body).on(
+			'click',
+			'.product_data_tabs .wpmt_print_mockup_options a, .product_data_tabs a[href="#wpmt_print_mockup_panel"]',
+			function () {
+				window.setTimeout(initializeWhenTabVisible, 50);
+			}
+		);
+
+		$(document.body).on('woocommerce_variations_loaded', function () {
+			window.setTimeout(initializeWhenTabVisible, 50);
+		});
+	}
+
+	function bindMediaPicker() {
 		var mediaFrame;
 
 		$('.wpmt-select-mockup-image').on('click', function (event) {
@@ -216,22 +507,45 @@
 				button: {
 					text: 'Use this image'
 				},
-				multiple: false
+				multiple: false,
+				library: {
+					type: 'image'
+				}
 			});
 
 			mediaFrame.on('select', function () {
-				var attachment = mediaFrame.state().get('selection').first().toJSON();
-				var imageUrl = attachment.sizes && attachment.sizes.medium
-					? attachment.sizes.medium.url
-					: attachment.url;
+				var attachment = mediaFrame
+					.state()
+					.get('selection')
+					.first()
+					.toJSON();
+
+				var previewUrl =
+					attachment.sizes && attachment.sizes.medium
+						? attachment.sizes.medium.url
+						: attachment.url;
+
+				var editorUrl =
+					attachment.sizes && attachment.sizes.large
+						? attachment.sizes.large.url
+						: attachment.url;
 
 				$('#wpmt_mockup_image_id').val(attachment.id);
 
 				$('.wpmt-mockup-image-preview').html(
-					'<img src="' + imageUrl + '" alt="" />'
+					$('<img>', {
+						src: previewUrl,
+						alt: ''
+					})
 				);
 
 				$('.wpmt-remove-mockup-image').show();
+
+				$('#wpmt-placement-editor')
+					.attr('data-image-url', editorUrl);
+
+				initializeEditor();
+				loadEditorImage(editorUrl);
 			});
 
 			mediaFrame.open();
@@ -241,10 +555,37 @@
 			event.preventDefault();
 
 			$('#wpmt_mockup_image_id').val('');
-			$('.wpmt-mockup-image-preview').empty();
-			$(this).hide();
-		});
+			$('#wpmt_placement_data').val('{}');
 
-		initRectangleEditor();
+			$('.wpmt-mockup-image-preview').empty();
+			$('.wpmt-editor-canvas-wrap').prop('hidden', true);
+			$('.wpmt-editor-empty').show();
+
+			$(this).hide();
+
+			if (fabricCanvas) {
+				fabricCanvas.clear();
+				backgroundImage = null;
+				rectangle = null;
+				perspectivePolygon = null;
+				perspectivePoints = [];
+			}
+		});
+	}
+
+	$(function () {
+		bindWooCommerceTab();
+		bindEditorButtons();
+		bindMediaPicker();
+
+		initializeWhenTabVisible();
+
+		$(window).on('resize.wpmtEditor', function () {
+			if (!fabricCanvas) {
+				return;
+			}
+
+			fabricCanvas.calcOffset();
+		});
 	});
 })(jQuery);

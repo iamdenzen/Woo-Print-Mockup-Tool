@@ -109,17 +109,35 @@ $placement_data  = ! empty( $config['placement_data'] ) && is_array( $config['pl
 		?>
 
 		<div
-			class="wpmt-placement-canvas"
+			id="wpmt-placement-editor"
+			class="wpmt-placement-editor"
 			data-image-url="<?php echo esc_url( $mockup_image_url ); ?>"
 		>
-			<div class="wpmt-editor-empty">
-				<?php esc_html_e( 'Select a mockup image, save/update the product, then draw the print area here.', 'woo-print-mockup-tool' ); ?>
+			<div class="wpmt-editor-toolbar">
+				<button type="button" class="button wpmt-set-rectangle">
+					<?php esc_html_e( 'Rectangle', 'woo-print-mockup-tool' ); ?>
+				</button>
+
+				<button type="button" class="button wpmt-set-perspective">
+					<?php esc_html_e( '4-point perspective', 'woo-print-mockup-tool' ); ?>
+				</button>
+
+				<button type="button" class="button wpmt-reset-placement">
+					<?php esc_html_e( 'Reset placement', 'woo-print-mockup-tool' ); ?>
+				</button>
 			</div>
 
-			<div class="wpmt-editor-stage" style="display:none;">
-				<img class="wpmt-editor-image" src="" alt="" />
-				<div class="wpmt-editor-rect"></div>
+			<div class="wpmt-editor-empty">
+				<?php esc_html_e( 'Select a mockup image and update the product to start defining the placement area.', 'woo-print-mockup-tool' ); ?>
 			</div>
+
+			<div class="wpmt-editor-canvas-wrap" hidden>
+				<canvas id="wpmt-placement-canvas"></canvas>
+			</div>
+
+			<p class="description wpmt-editor-help">
+				<?php esc_html_e( 'Rectangle mode provides resize and move controls. Perspective mode provides four draggable corner points.', 'woo-print-mockup-tool' ); ?>
+			</p>
 		</div>
 	</div>
 </div>
