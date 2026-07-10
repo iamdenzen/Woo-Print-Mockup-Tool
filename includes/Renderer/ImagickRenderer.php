@@ -256,8 +256,16 @@ final class ImagickRenderer implements RendererInterface {
 		 * Force the distorted image onto a canvas matching the complete
 		 * mockup. This allows destination points to use absolute mockup
 		 * coordinates and avoids ImageMagick page-offset complications.
+		 *
+		 * NOTE: this must be set via setImageArtifact(), not setOption().
+		 * setOption() sets a *global* Imagick option and is silently
+		 * ignored by distortImage()'s viewport handling on many
+		 * Imagick/ImageMagick builds -- the artwork then stays clipped to
+		 * its pre-distort size and the perspective destination points
+		 * (which are in absolute mockup coordinates) fall outside that
+		 * small buffer, so nothing visible gets composited.
 		 */
-		$artwork->setOption(
+		$artwork->setImageArtifact(
 			'distort:viewport',
 			sprintf(
 				'%dx%d+0+0',
@@ -394,6 +402,24 @@ final class ImagickRenderer implements RendererInterface {
 
 	private function prepare_image( \Imagick $image ): void {
 		$image->setIteratorIndex( 0 );
+
+		/*
+		 * Normalize pixel orientation to match what browsers (and
+		 * therefore the Fabric.js placement editor) display. Browsers
+		 * auto-rotate images per EXIF orientation, but Imagick's
+		 * getImageWidth()/getImageHeight() report the raw, un-rotated
+		 * pixel buffer. Without this, an EXIF-rotated mockup photo (e.g.
+		 * a phone photo saved with a 90/270 degree orientation tag) is
+		 * measured with swapped width/height here versus what the editor
+		 * used to compute placement fractions, so every placement lands
+		 * in the wrong spot.
+		 */
+		if ( method_exists( $image, 'autoOrient' ) ) {
+			$image->autoOrient();
+		} elseif ( method_exists( $image, 'autoOrientImage' ) ) {
+			$image->autoOrientImage();
+		}
+
 		$image->setImageColorspace( \Imagick::COLORSPACE_SRGB );
 		$image->setImageAlphaChannel( \Imagick::ALPHACHANNEL_SET );
 	}
@@ -423,9 +449,19 @@ final class ImagickRenderer implements RendererInterface {
 	private function apply_engraving_effect( \Imagick $image ): void {
 		$image->setImageType( \Imagick::IMGTYPE_GRAYSCALEMATTE );
 
+		/*
+		 * Imagick::colorizeImage()'s second argument is typed as
+		 * ImagickPixel|string|false, NOT a float. It represents, per
+		 * channel, how much of the colorize color to blend in -- passing
+		 * a raw float like 0.65 gets silently coerced to the string
+		 * "0.65", which ImageMagick then tries to parse as a color and
+		 * fails with "Unrecognized color string". A percentage-based
+		 * ImagickPixel is the correct way to express a uniform 65% blend
+		 * across all three channels.
+		 */
 		$image->colorizeImage(
 			new \ImagickPixel( '#6f6f6f' ),
-			new \ImagickPixel( 'rgb(65%,65%,65%)' )   // was: 0.65
+			new \ImagickPixel( 'rgb(65%,65%,65%)' )
 		);
 
 		$image->evaluateImage(
