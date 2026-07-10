@@ -196,6 +196,8 @@
 			top: top,
 			width: width,
 			height: height,
+			originX: 'left',
+			originY: 'top',
 			fill: 'rgba(34, 113, 177, 0.15)',
 			stroke: '#2271b1',
 			strokeWidth: 2,
