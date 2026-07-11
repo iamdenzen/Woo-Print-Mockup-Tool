@@ -34,6 +34,22 @@ final class CleanupService {
 			}
 		}
 
+		$expired_jobs = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, artwork_path FROM {$jobs_table} WHERE expires_at <= %s",
+				$now
+			),
+			ARRAY_A
+		);
+
+		foreach ( $expired_jobs as $job ) {
+			if ( ! empty( $job['artwork_path'] ) ) {
+				$this->delete_file_if_safe(
+					$job['artwork_path']
+				);
+			}
+		}
+
 		$expired_sessions = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT id, artwork_path FROM {$sessions_table} WHERE expires_at <= %s",
