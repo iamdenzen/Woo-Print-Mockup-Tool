@@ -3,6 +3,8 @@
 namespace WooPrintMockupTool\Api;
 
 use WooPrintMockupTool\Services\RenderPipeline;
+use WooPrintMockupTool\Services\ApiKeyAuthenticator;
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -26,9 +28,8 @@ final class RenderJobController {
 		);
 	}
 
-	public function can_render(): bool {
-		// Temporary admin-only auth for testing. Replace with API key later.
-		return current_user_can( 'manage_woocommerce' );
+	public function can_render( WP_REST_Request $request ): true|WP_Error {
+		return ( new ApiKeyAuthenticator() )->authenticate( $request );
 	}
 
 	public function create( WP_REST_Request $request ): WP_REST_Response {

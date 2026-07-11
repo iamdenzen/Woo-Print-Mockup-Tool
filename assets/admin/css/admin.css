@@ -81,3 +81,44 @@
 .wpmt-placement-editor .canvas-container {
 	max-width: 100%;
 }
+
+/* Settngs Page */
+.wpmt-api-key-management {
+	max-width: 900px;
+	margin-top: 24px;
+	padding: 20px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+}
+
+.wpmt-api-key-management h2 {
+	margin-top: 0;
+}
+
+.wpmt-api-key-actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+}
+
+.wpmt-inline-form {
+	display: inline-block;
+	margin: 0;
+}
+
+.wpmt-generated-api-key {
+	display: inline-block;
+	padding: 10px 12px;
+	font-size: 14px;
+	word-break: break-all;
+	user-select: all;
+}
+
+.wpmt-api-key-notice {
+	padding-top: 10px;
+	padding-bottom: 10px;
+}
+
+.wpmt-diagnostics-table {
+	max-width: 900px;
+}

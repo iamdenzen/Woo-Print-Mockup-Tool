@@ -3,6 +3,7 @@
 namespace WooPrintMockupTool\Admin;
 
 use WooPrintMockupTool\Storage\UploadDirectories;
+use WooPrintMockupTool\Services\ApiKeyService;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -15,6 +16,16 @@ final class SettingsPage {
 	public function register(): void {
 		add_action( 'admin_menu', [ $this, 'add_menu_page' ] );
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
+
+		add_action(
+			'admin_post_wpmt_generate_api_key',
+			[ $this, 'handle_generate_api_key' ]
+		);
+
+		add_action(
+			'admin_post_wpmt_revoke_api_key',
+			[ $this, 'handle_revoke_api_key' ]
+		);
 	}
 
 	public function add_menu_page(): void {
@@ -38,6 +49,20 @@ final class SettingsPage {
 	public function render_page(): void {
 		if ( ! current_user_can( 'manage_woocommerce' ) ) {
 			return;
+		}
+
+		$api_key_service = new ApiKeyService();
+
+		$new_api_key = get_transient(
+			$this->get_api_key_transient_name()
+		);
+
+		if ( is_string( $new_api_key ) && '' !== $new_api_key ) {
+			delete_transient(
+				$this->get_api_key_transient_name()
+			);
+		} else {
+			$new_api_key = '';
 		}
 
 		include WPMT_PLUGIN_DIR . 'templates/admin/settings.php';
@@ -537,5 +562,84 @@ final class SettingsPage {
 
 	public function sanitize_remote_timeout( mixed $value ): int {
 		return max( 5, min( 300, absint( $value ) ) );
+	}
+
+	public function handle_generate_api_key(): void {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die(
+				esc_html__(
+					'You are not allowed to manage API keys.',
+					'woo-print-mockup-tool'
+				)
+			);
+		}
+
+		check_admin_referer( 'wpmt_generate_api_key' );
+
+		$key = ( new ApiKeyService() )->generate();
+
+		set_transient(
+			$this->get_api_key_transient_name(),
+			$key,
+			5 * MINUTE_IN_SECONDS
+		);
+
+		wp_safe_redirect(
+			$this->get_settings_page_url(
+				[
+					'wpmt_api_key_generated' => '1',
+				]
+			)
+		);
+
+		exit;
+	}
+
+	public function handle_revoke_api_key(): void {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die(
+				esc_html__(
+					'You are not allowed to manage API keys.',
+					'woo-print-mockup-tool'
+				)
+			);
+		}
+
+		check_admin_referer( 'wpmt_revoke_api_key' );
+
+		( new ApiKeyService() )->revoke();
+
+		delete_transient(
+			$this->get_api_key_transient_name()
+		);
+
+		wp_safe_redirect(
+			$this->get_settings_page_url(
+				[
+					'wpmt_api_key_revoked' => '1',
+				]
+			)
+		);
+
+		exit;
+	}
+
+	private function get_settings_page_url( array $args = [] ): string {
+		$url = add_query_arg(
+			[
+				'page' => self::PAGE_SLUG,
+			],
+			admin_url( 'admin.php' )
+		);
+
+		if ( ! empty( $args ) ) {
+			$url = add_query_arg( $args, $url );
+		}
+
+		return $url;
+	}
+
+	private function get_api_key_transient_name(): string {
+		return 'wpmt_new_api_key_' . get_current_user_id();
 	}
 }
