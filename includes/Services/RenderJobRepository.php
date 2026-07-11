@@ -20,7 +20,7 @@ final class RenderJobRepository {
 	public function create_job( array $data ): bool {
 		global $wpdb;
 
-		$now        = gmdate();
+		$now        = gmdate('Y-m-d H:i:s');
 		$expires_at = $this->get_expires_at();
 
 		return false !== $wpdb->insert(
@@ -61,7 +61,7 @@ final class RenderJobRepository {
 	public function add_result( array $data ): bool {
 		global $wpdb;
 
-		$now        = gmdate();
+		$now        = gmdate('Y-m-d H:i:s');
 		$expires_at = $this->get_expires_at();
 
 		return false !== $wpdb->insert(
