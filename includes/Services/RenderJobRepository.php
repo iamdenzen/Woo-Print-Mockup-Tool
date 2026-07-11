@@ -20,8 +20,8 @@ final class RenderJobRepository {
 	public function create_job( array $data ): bool {
 		global $wpdb;
 
-		$now        = current_time( 'mysql' );
-		$expires_at = gmdate( 'Y-m-d H:i:s', time() + ( 30 * MINUTE_IN_SECONDS ) );
+		$now        = gmdate();
+		$expires_at = $this->get_expires_at();
 
 		return false !== $wpdb->insert(
 			$this->jobs_table,
@@ -61,8 +61,8 @@ final class RenderJobRepository {
 	public function add_result( array $data ): bool {
 		global $wpdb;
 
-		$now        = current_time( 'mysql' );
-		$expires_at = gmdate( 'Y-m-d H:i:s', time() + ( 30 * MINUTE_IN_SECONDS ) );
+		$now        = gmdate();
+		$expires_at = $this->get_expires_at();
 
 		return false !== $wpdb->insert(
 			$this->results_table,
@@ -104,4 +104,19 @@ final class RenderJobRepository {
 
 		return is_array( $rows ) ? $rows : [];
 	}
+
+	private function get_expires_at(): string {
+		$retention_minutes = absint(
+			get_option( 'wpmt_result_retention_minutes', 30 )
+		);
+
+		if ( $retention_minutes < 5 ) {
+			$retention_minutes = 30;
+		}
+
+		return current_datetime()
+			->modify( '+' . $retention_minutes . ' minutes' )
+			->format( 'Y-m-d H:i:s' );
+	}
+
 }

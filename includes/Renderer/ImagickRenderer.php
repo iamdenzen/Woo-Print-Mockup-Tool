@@ -61,7 +61,18 @@ final class ImagickRenderer implements RendererInterface {
 			$this->prepare_image( $mockup );
 			$this->prepare_image( $artwork );
 
-			$this->remove_white_background( $artwork );
+			$this->limit_output_dimensions( $mockup );
+
+			$white_threshold = absint(
+				get_option( 'wpmt_white_threshold', 245 )
+			);
+
+			$white_threshold = max( 0, min( 255, $white_threshold ) );
+
+			$this->remove_white_background(
+				$artwork,
+				$white_threshold
+			);
 
 			if ( 'engraving' === sanitize_key( $args['render_mode'] ?? 'color' ) ) {
 				$this->apply_engraving_effect( $artwork );
@@ -424,7 +435,40 @@ final class ImagickRenderer implements RendererInterface {
 		$image->setImageAlphaChannel( \Imagick::ALPHACHANNEL_SET );
 	}
 
-	private function remove_white_background( \Imagick $image ): void {
+
+	private function limit_output_dimensions(
+		\Imagick $image
+	): void {
+		$max_dimension = absint(
+			get_option( 'wpmt_output_max_dimension', 1500 )
+		);
+
+		if ( $max_dimension < 300 ) {
+			$max_dimension = 1500;
+		}
+
+		$width  = $image->getImageWidth();
+		$height = $image->getImageHeight();
+
+		if (
+			$width <= $max_dimension
+			&& $height <= $max_dimension
+		) {
+			return;
+		}
+
+		$image->thumbnailImage(
+			$max_dimension,
+			$max_dimension,
+			true
+		);
+	}
+
+
+	private function remove_white_background(
+		\Imagick $image,
+		int $threshold
+	): void {
 		$image->setImageAlphaChannel( \Imagick::ALPHACHANNEL_SET );
 
 		$iterator = $image->getPixelIterator();
@@ -437,7 +481,11 @@ final class ImagickRenderer implements RendererInterface {
 				$green = (int) ( $color['g'] ?? 0 );
 				$blue  = (int) ( $color['b'] ?? 0 );
 
-				if ( $red >= 245 && $green >= 245 && $blue >= 245 ) {
+				if (
+					$red >= $threshold
+					&& $green >= $threshold
+					&& $blue >= $threshold
+				) {
 					$pixel->setColor( 'rgba(255,255,255,0)' );
 				}
 			}
