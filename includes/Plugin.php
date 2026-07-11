@@ -7,6 +7,7 @@ use WooPrintMockupTool\Api\ApiServiceProvider;
 use WooPrintMockupTool\Assets\AssetsServiceProvider;
 use WooPrintMockupTool\Frontend\FrontendServiceProvider;
 use WooPrintMockupTool\Storage\CleanupService;
+use WooPrintMockupTool\Services\WebhookRetryService;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -35,6 +36,7 @@ final class Plugin {
 			FrontendServiceProvider::class,
 			ApiServiceProvider::class,
 			CleanupService::class,
+			WebhookRetryService::class,
 		];
 
 		foreach ( $providers as $provider ) {

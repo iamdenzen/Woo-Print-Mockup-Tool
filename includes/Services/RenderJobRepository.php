@@ -20,23 +20,38 @@ final class RenderJobRepository {
 	public function create_job( array $data ): bool {
 		global $wpdb;
 
-		$now        = gmdate('Y-m-d H:i:s');
-		$expires_at = $this->get_expires_at();
+		$webhook_url = ! empty( $data['webhook_url'] )
+			? esc_url_raw( $data['webhook_url'] )
+			: '';
 
 		return false !== $wpdb->insert(
 			$this->jobs_table,
 			[
-				'job_id'       => sanitize_text_field( $data['job_id'] ?? '' ),
-				'source'       => sanitize_key( $data['source'] ?? 'api' ),
-				'status'       => sanitize_key( $data['status'] ?? 'pending' ),
-				'artwork_path' => ! empty( $data['artwork_path'] ) ? sanitize_text_field( $data['artwork_path'] ) : null,
-				'webhook_url'  => ! empty( $data['webhook_url'] ) ? esc_url_raw( $data['webhook_url'] ) : null,
-				'created_at'   => $now,
-				'expires_at'   => $expires_at,
+				'job_id'                   => sanitize_text_field( $data['job_id'] ?? '' ),
+				'source'                   => sanitize_key( $data['source'] ?? 'api' ),
+				'status'                   => sanitize_key( $data['status'] ?? 'pending' ),
+				'artwork_path'             => ! empty( $data['artwork_path'] )
+					? sanitize_text_field( $data['artwork_path'] )
+					: null,
+				'webhook_url'              => $webhook_url ?: null,
+				'webhook_status'           => $webhook_url
+					? 'pending'
+					: 'not_requested',
+				'webhook_attempts'         => 0,
+				'webhook_last_error'       => null,
+				'webhook_delivered_at'     => null,
+				'webhook_next_attempt_at'  => null,
+				'created_at'               => current_time( 'mysql' ),
+				'expires_at'               => $this->get_expires_at(),
 			],
 			[
 				'%s',
 				'%s',
+				'%s',
+				'%s',
+				'%s',
+				'%s',
+				'%d',
 				'%s',
 				'%s',
 				'%s',
@@ -46,14 +61,93 @@ final class RenderJobRepository {
 		);
 	}
 
-	public function update_job_status( string $job_id, string $status ): bool {
+	public function get_job_by_job_id( string $job_id ): ?array {
+		global $wpdb;
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$this->jobs_table} WHERE job_id = %s LIMIT 1",
+				sanitize_text_field( $job_id )
+			),
+			ARRAY_A
+		);
+
+		return is_array( $row ) ? $row : null;
+	}
+
+	public function update_job_status(
+		string $job_id,
+		string $status
+	): bool {
 		global $wpdb;
 
 		return false !== $wpdb->update(
 			$this->jobs_table,
-			[ 'status' => sanitize_key( $status ) ],
-			[ 'job_id' => sanitize_text_field( $job_id ) ],
+			[
+				'status' => sanitize_key( $status ),
+			],
+			[
+				'job_id' => sanitize_text_field( $job_id ),
+			],
 			[ '%s' ],
+			[ '%s' ]
+		);
+	}
+
+	public function mark_webhook_delivered(
+		string $job_id,
+		int $attempts
+	): bool {
+		global $wpdb;
+
+		return false !== $wpdb->update(
+			$this->jobs_table,
+			[
+				'webhook_status'          => 'delivered',
+				'webhook_attempts'        => $attempts,
+				'webhook_last_error'      => null,
+				'webhook_delivered_at'    => current_time( 'mysql' ),
+				'webhook_next_attempt_at' => null,
+			],
+			[
+				'job_id' => sanitize_text_field( $job_id ),
+			],
+			[
+				'%s',
+				'%d',
+				'%s',
+				'%s',
+				'%s',
+			],
+			[ '%s' ]
+		);
+	}
+
+	public function mark_webhook_failed(
+		string $job_id,
+		int $attempts,
+		string $error,
+		?string $next_attempt_at
+	): bool {
+		global $wpdb;
+
+		return false !== $wpdb->update(
+			$this->jobs_table,
+			[
+				'webhook_status'          => 'failed',
+				'webhook_attempts'        => $attempts,
+				'webhook_last_error'      => sanitize_textarea_field( $error ),
+				'webhook_next_attempt_at' => $next_attempt_at,
+			],
+			[
+				'job_id' => sanitize_text_field( $job_id ),
+			],
+			[
+				'%s',
+				'%d',
+				'%s',
+				'%s',
+			],
 			[ '%s' ]
 		);
 	}
@@ -61,21 +155,26 @@ final class RenderJobRepository {
 	public function add_result( array $data ): bool {
 		global $wpdb;
 
-		$now        = gmdate('Y-m-d H:i:s');
-		$expires_at = $this->get_expires_at();
-
 		return false !== $wpdb->insert(
 			$this->results_table,
 			[
 				'job_id'        => sanitize_text_field( $data['job_id'] ?? '' ),
-				'session_key'   => ! empty( $data['session_key'] ) ? sanitize_text_field( $data['session_key'] ) : null,
+				'session_key'   => ! empty( $data['session_key'] )
+					? sanitize_text_field( $data['session_key'] )
+					: null,
 				'product_id'    => absint( $data['product_id'] ?? 0 ),
-				'image_path'    => ! empty( $data['image_path'] ) ? sanitize_text_field( $data['image_path'] ) : null,
-				'image_url'     => ! empty( $data['image_url'] ) ? esc_url_raw( $data['image_url'] ) : null,
+				'image_path'    => ! empty( $data['image_path'] )
+					? sanitize_text_field( $data['image_path'] )
+					: null,
+				'image_url'     => ! empty( $data['image_url'] )
+					? esc_url_raw( $data['image_url'] )
+					: null,
 				'status'        => sanitize_key( $data['status'] ?? 'pending' ),
-				'error_message' => ! empty( $data['error_message'] ) ? sanitize_textarea_field( $data['error_message'] ) : null,
-				'created_at'    => $now,
-				'expires_at'    => $expires_at,
+				'error_message' => ! empty( $data['error_message'] )
+					? sanitize_textarea_field( $data['error_message'] )
+					: null,
+				'created_at'    => current_time( 'mysql' ),
+				'expires_at'    => $this->get_expires_at(),
 			],
 			[
 				'%s',
@@ -91,7 +190,9 @@ final class RenderJobRepository {
 		);
 	}
 
-	public function get_results_by_job_id( string $job_id ): array {
+	public function get_results_by_job_id(
+		string $job_id
+	): array {
 		global $wpdb;
 
 		$rows = $wpdb->get_results(
@@ -107,7 +208,10 @@ final class RenderJobRepository {
 
 	private function get_expires_at(): string {
 		$retention_minutes = absint(
-			get_option( 'wpmt_result_retention_minutes', 30 )
+			get_option(
+				'wpmt_result_retention_minutes',
+				30
+			)
 		);
 
 		if ( $retention_minutes < 5 ) {
@@ -115,8 +219,9 @@ final class RenderJobRepository {
 		}
 
 		return current_datetime()
-			->modify( '+' . $retention_minutes . ' minutes' )
+			->modify(
+				'+' . $retention_minutes . ' minutes'
+			)
 			->format( 'Y-m-d H:i:s' );
 	}
-
 }

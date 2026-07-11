@@ -25,18 +25,36 @@ final class RenderPipeline {
 	public function run_api_job( string $job_id, array $artwork_file, array $product_ids, string $webhook_url = '' ): array {
 		$job_id      = sanitize_text_field( $job_id );
 		$product_ids = $this->sanitize_product_ids( $product_ids );
+		$webhook_url = esc_url_raw( $webhook_url );
 
 		if ( '' === $job_id ) {
 			return [
 				'success' => false,
-				'error'   => __( 'Job ID is required.', 'woo-print-mockup-tool' ),
+				'status'  => 'error',
+				'error'   => __(
+					'Job ID is required.',
+					'woo-print-mockup-tool'
+				),
 			];
+		}
+
+		$existing_job = $this->jobs
+			->get_job_by_job_id( $job_id );
+
+		if ( $existing_job ) {
+			return $this->build_existing_job_response(
+				$existing_job
+			);
 		}
 
 		if ( empty( $product_ids ) ) {
 			return [
 				'success' => false,
-				'error'   => __( 'At least one product ID is required.', 'woo-print-mockup-tool' ),
+				'status'  => 'error',
+				'error'   => __(
+					'At least one product is required.',
+					'woo-print-mockup-tool'
+				),
 			];
 		}
 
@@ -49,9 +67,13 @@ final class RenderPipeline {
 		if ( count( $product_ids ) > $max_products ) {
 			return [
 				'success' => false,
+				'status'  => 'error',
 				'error'   => sprintf(
-					/* translators: %d: max products per render job */
-					__( 'Maximum %d products are allowed per render job.', 'woo-print-mockup-tool' ),
+					/* translators: %d: max products */
+					__(
+						'Maximum %d products are allowed per render job.',
+						'woo-print-mockup-tool'
+					),
 					$max_products
 				),
 			];
@@ -63,7 +85,7 @@ final class RenderPipeline {
 			return $upload;
 		}
 
-		$this->jobs->create_job(
+		$created = $this->jobs->create_job(
 			[
 				'job_id'       => $job_id,
 				'source'       => 'api',
@@ -72,6 +94,34 @@ final class RenderPipeline {
 				'webhook_url'  => $webhook_url,
 			]
 		);
+
+		if ( ! $created ) {
+			$this->delete_uploaded_artwork(
+				(string) $upload['path']
+			);
+
+			/*
+			 * Handles concurrent duplicate requests where another
+			 * process created the same unique job_id first.
+			 */
+			$existing_job = $this->jobs
+				->get_job_by_job_id( $job_id );
+
+			if ( $existing_job ) {
+				return $this->build_existing_job_response(
+					$existing_job
+				);
+			}
+
+			return [
+				'success' => false,
+				'status'  => 'error',
+				'error'   => __(
+					'Could not create render job.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
 
 		UploadDirectories::ensure();
 
@@ -92,34 +142,99 @@ final class RenderPipeline {
 
 			$results[] = $result;
 		}
+		
+		$status = $this->determine_job_status(
+			$results
+		);
 
-		$has_errors = false;
+		$this->jobs->update_job_status(
+			$job_id,
+			$status
+		);
 
-		foreach ( $results as $result ) {
-			if ( empty( $result['success'] ) ) {
-				$has_errors = true;
-				break;
-			}
+		$response = [
+			'success' => 'completed' === $status,
+			'job_id'  => $job_id,
+			'status'  => $this->format_job_status( $status ),
+			'results' => $results,
+		];
+
+		if ( '' !== $webhook_url ) {
+			$webhook = (
+				new WebhookService()
+			)->deliver( $job_id );
+
+			$response['webhook'] = [
+				'delivered' => ! empty(
+					$webhook['success']
+				),
+				'attempts'  => absint(
+					$webhook['attempts'] ?? 0
+				),
+			];
 		}
 
-		$this->jobs->update_job_status( $job_id, $has_errors ? 'partial' : 'completed' );
+		return $response;
+	}
+
+
+	private function build_existing_job_response(
+		array $job
+	): array {
+		$status = sanitize_key(
+			$job['status'] ?? ''
+		);
+
+		if ( 'processing' === $status ) {
+			return [
+				'success'    => true,
+				'idempotent' => true,
+				'job_id'     => (string) $job['job_id'],
+				'status'     => 'processing',
+				'results'    => [],
+			];
+		}
+
+		$results = $this->format_stored_results(
+			$this->jobs->get_results_by_job_id(
+				(string) $job['job_id']
+			)
+		);
 
 		return [
-			'success' => ! $has_errors,
-			'job_id'  => $job_id,
-			'status'  => $has_errors ? 'partial' : 'success',
-			'results' => $results,
+			'success'    => 'completed' === $status,
+			'idempotent' => true,
+			'job_id'     => (string) $job['job_id'],
+			'status'     => $this->format_job_status(
+				$status
+			),
+			'results'    => $results,
 		];
 	}
 
-	private function render_product_for_job( $renderer, string $job_id, int $product_id, string $artwork_path, string $output_dir ): array {
-		$config = $this->configs->get_by_product_id( $product_id );
 
-		if ( ! $config || empty( $config['enabled'] ) ) {
+	private function render_product_for_job( $renderer, string $job_id, int $product_id, string $artwork_path, string $output_dir ): array {
+		$product = wc_get_product( $product_id );
+		$sku     = $product
+			? $product->get_sku()
+			: '';
+
+		$config = $this->configs->get_by_product_id(
+			$product_id
+		);
+
+		if (
+			! $config
+			|| empty( $config['enabled'] )
+		) {
 			return $this->store_error_result(
 				$job_id,
 				$product_id,
-				__( 'Product is not configured for mockup rendering.', 'woo-print-mockup-tool' )
+				$sku,
+				__(
+					'Product is not configured for mockup rendering.',
+					'woo-print-mockup-tool'
+				)
 			);
 		}
 
@@ -129,7 +244,11 @@ final class RenderPipeline {
 			return $this->store_error_result(
 				$job_id,
 				$product_id,
-				__( 'Mockup image could not be found.', 'woo-print-mockup-tool' )
+				$sku,
+				__(
+					'Mockup image could not be found.',
+					'woo-print-mockup-tool'
+				)
 			);
 		}
 
@@ -152,7 +271,9 @@ final class RenderPipeline {
 			return $this->store_error_result(
 				$job_id,
 				$product_id,
-				$render_result['error'] ?? __( 'Render failed.', 'woo-print-mockup-tool' )
+				$sku,
+				$render_result['error']
+					?? __( 'Render failed.', 'woo-print-mockup-tool' )
 			);
 		}
 
@@ -169,11 +290,12 @@ final class RenderPipeline {
 		return [
 			'success'    => true,
 			'product_id' => $product_id,
+			'sku'        => $sku,
 			'image_url'  => $output_url,
 		];
 	}
 
-	private function store_error_result( string $job_id, int $product_id, string $error ): array {
+	private function store_error_result( string $job_id, int $product_id, string $sku, string $error ): array {
 		$this->jobs->add_result(
 			[
 				'job_id'        => $job_id,
@@ -186,8 +308,86 @@ final class RenderPipeline {
 		return [
 			'success'    => false,
 			'product_id' => $product_id,
+			'sku'		 =>	$sku,
 			'error'      => $error,
 		];
+	}
+
+
+	private function format_stored_results(
+		array $results
+	): array {
+		$formatted = [];
+
+		foreach ( $results as $result ) {
+			$product_id = absint(
+				$result['product_id'] ?? 0
+			);
+
+			$product = $product_id
+				? wc_get_product( $product_id )
+				: false;
+
+			$item = [
+				'success'    => 'success'
+					=== ( $result['status'] ?? '' ),
+				'product_id' => $product_id,
+				'sku'        => $product
+					? $product->get_sku()
+					: '',
+			];
+
+			if ( ! empty( $result['image_url'] ) ) {
+				$item['image_url'] = (
+					string
+				) $result['image_url'];
+			}
+
+			if ( ! empty( $result['error_message'] ) ) {
+				$item['error'] = (
+					string
+				) $result['error_message'];
+			}
+
+			$formatted[] = $item;
+		}
+
+		return $formatted;
+	}
+
+	private function determine_job_status(
+		array $results
+	): string {
+		$successes = 0;
+		$errors    = 0;
+
+		foreach ( $results as $result ) {
+			if ( ! empty( $result['success'] ) ) {
+				++$successes;
+			} else {
+				++$errors;
+			}
+		}
+
+		if ( $successes > 0 && 0 === $errors ) {
+			return 'completed';
+		}
+
+		if ( $successes > 0 ) {
+			return 'partial';
+		}
+
+		return 'failed';
+	}
+
+	private function format_job_status(
+		string $status
+	): string {
+		return match ( $status ) {
+			'completed' => 'success',
+			'failed'    => 'error',
+			default     => $status,
+		};
 	}
 
 	private function get_mockup_image_path( array $config, int $product_id ): string {
@@ -211,5 +411,22 @@ final class RenderPipeline {
 		$product_ids = array_filter( $product_ids );
 
 		return array_values( array_unique( $product_ids ) );
+	}
+
+	private function delete_uploaded_artwork(
+		string $path
+	): void {
+		$path = wp_normalize_path( $path );
+		$base = wp_normalize_path(
+			UploadDirectories::artwork_dir()
+		);
+
+		if ( 0 !== strpos( $path, $base ) ) {
+			return;
+		}
+
+		if ( is_file( $path ) ) {
+			@unlink( $path );
+		}
 	}
 }
