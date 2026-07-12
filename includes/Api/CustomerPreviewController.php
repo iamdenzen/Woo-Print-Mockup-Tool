@@ -104,7 +104,9 @@ final class CustomerPreviewController {
 
 		$result = ( new RenderPipeline() )->run_api_job(
 			'preview-' . wp_generate_uuid4(),
-			$files['artwork_file'],
+			[
+				'file' => $files['artwork_file'],
+			],
 			[ $product_id ],
 			''
 		);

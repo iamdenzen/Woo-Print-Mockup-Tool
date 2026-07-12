@@ -22,7 +22,13 @@ final class RenderPipeline {
 		$this->renderer_factory = new RendererFactory();
 	}
 
-	public function run_api_job( string $job_id, array $artwork_file, array $product_ids, string $webhook_url = '' ): array {
+	public function run_api_job( 
+		string $job_id, 
+		array $artwork_input, 
+		array $product_ids, 
+		string $webhook_url = '' 
+	): array {
+		
 		$job_id      = sanitize_text_field( $job_id );
 		$product_ids = $this->sanitize_product_ids( $product_ids );
 		$webhook_url = esc_url_raw( $webhook_url );
@@ -79,7 +85,10 @@ final class RenderPipeline {
 			];
 		}
 
-		$upload = $this->uploads->handle_upload( $artwork_file, 'api' );
+		$upload = $this->resolve_artwork_input(
+			$artwork_input,
+			'api'
+		);
 
 		if ( empty( $upload['success'] ) ) {
 			return $upload;
@@ -177,6 +186,39 @@ final class RenderPipeline {
 		return $response;
 	}
 
+
+	private function resolve_artwork_input(
+		array $artwork_input,
+		string $context
+	): array {
+		if (
+			! empty( $artwork_input['file'] )
+			&& is_array( $artwork_input['file'] )
+		) {
+			return $this->uploads->handle_upload(
+				$artwork_input['file'],
+				$context
+			);
+		}
+
+		if (
+			! empty( $artwork_input['url'] )
+			&& is_string( $artwork_input['url'] )
+		) {
+			return $this->uploads->handle_url(
+				$artwork_input['url'],
+				$context
+			);
+		}
+
+		return [
+			'success' => false,
+			'error'   => __(
+				'Artwork file or artwork URL is required.',
+				'woo-print-mockup-tool'
+			),
+		];
+	}
 
 	private function build_existing_job_response(
 		array $job

@@ -67,20 +67,18 @@ final class RenderJobController {
 			);
 		}
 
-		if (
-			empty( $files['artwork_file'] )
-			&& ! empty( $files['logo_file'] )
-		) {
-			$files['artwork_file'] = $files['logo_file'];
-		}
+		$artwork_input = $this->parse_artwork_input(
+			$request,
+			$files
+		);
 
-		if ( empty( $files['artwork_file'] ) ) {
+		if ( empty( $artwork_input ) ) {
 			return new WP_REST_Response(
 				[
 					'success' => false,
 					'status'  => 'error',
 					'error'   => __(
-						'Artwork file is required.',
+						'Artwork file or artwork URL is required.',
 						'woo-print-mockup-tool'
 					),
 				],
@@ -88,10 +86,9 @@ final class RenderJobController {
 			);
 		}
 
-
 		$result = ( new RenderPipeline() )->run_api_job(
 			$job_id,
-			$files['artwork_file'],
+			$artwork_input,
 			$resolution['product_ids'],
 			$webhook_url
 		);
@@ -116,6 +113,45 @@ final class RenderJobController {
 			$result,
 			$status_code
 		);
+	}
+
+	private function parse_artwork_input(
+		WP_REST_Request $request,
+		array $files
+	): array {
+		if ( ! empty( $files['artwork_file'] ) ) {
+			return [
+				'file' => $files['artwork_file'],
+			];
+		}
+
+		if ( ! empty( $files['logo_file'] ) ) {
+			return [
+				'file' => $files['logo_file'],
+			];
+		}
+
+		$artwork_url = trim(
+			(string) $request->get_param(
+				'artwork_url'
+			)
+		);
+
+		if ( '' === $artwork_url ) {
+			$artwork_url = trim(
+				(string) $request->get_param(
+					'logo_url'
+				)
+			);
+		}
+
+		if ( '' !== $artwork_url ) {
+			return [
+				'url' => $artwork_url,
+			];
+		}
+
+		return [];
 	}
 
 	private function parse_products(
