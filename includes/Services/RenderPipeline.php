@@ -338,15 +338,11 @@ final class RenderPipeline {
 			];
 
 			if ( ! empty( $result['image_url'] ) ) {
-				$item['image_url'] = (
-					string
-				) $result['image_url'];
+				$item['image_url'] = (string) $result['image_url'];
 			}
 
 			if ( ! empty( $result['error_message'] ) ) {
-				$item['error'] = (
-					string
-				) $result['error_message'];
+				$item['error'] = (string) $result['error_message'];
 			}
 
 			$formatted[] = $item;
