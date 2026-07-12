@@ -219,9 +219,7 @@ final class WebhookService {
 			}
 
 			if ( ! empty( $result['error_message'] ) ) {
-				$item['error'] = (
-					string
-				) $result['error_message'];
+				$item['error'] = (string) $result['error_message'];
 			}
 
 			$formatted_results[] = $item;
