@@ -75,19 +75,19 @@ final class CustomerPreviewController {
 			);
 		}
 
-		if ( empty( $files['artwork_file'] ) && ! empty( $files['logo_file'] ) ) {
+		
+		if (
+			empty( $files['artwork_file'] )
+			&& ! empty( $files['logo_file'] )
+		) {
 			$files['artwork_file'] = $files['logo_file'];
 		}
 
-		if ( empty( $files['artwork_file'] ) ) {
-			return new WP_REST_Response(
-				[
-					'status' => 'error',
-					'error'  => __( 'Artwork file is required.', 'woo-print-mockup-tool' ),
-				],
-				400
-			);
-		}
+		$artwork_file = ! empty(
+			$files['artwork_file']
+		)
+			? $files['artwork_file']
+			: null;
 
 
 		/*
