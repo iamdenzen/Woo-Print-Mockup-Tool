@@ -554,9 +554,7 @@ final class RenderPipeline {
 			];
 		}
 
-		$artwork_path = (
-			string
-		) ( $session['artwork_path'] ?? '' );
+		$artwork_path = (string) ( $session['artwork_path'] ?? '' );
 
 		if (
 			'' === $artwork_path
@@ -830,6 +828,6 @@ final class RenderPipeline {
 		}
 	}
 
-	
+
 
 }
