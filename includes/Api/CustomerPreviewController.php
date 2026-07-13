@@ -143,7 +143,7 @@ final class CustomerPreviewController {
 
 		return new WP_REST_Response(
 			$result,
-			! empty( $result['results'][0]['success'] ) ? 200 : 400
+			! empty( $result['success'] ) ? 200 : 400
 		);
 	}
 }

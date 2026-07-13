@@ -46,7 +46,7 @@ final class ArtworkSessionRepository {
 	): bool {
 		global $wpdb;
 
-		$existing = $this->get_by_session_key(
+		$existing = $this->get_any_by_session_key(
 			$session_key
 		);
 
@@ -93,6 +93,27 @@ final class ArtworkSessionRepository {
 			]
 		);
 	}
+
+    private function get_any_by_session_key(
+        string $session_key
+    ): ?array {
+        global $wpdb;
+
+        $row = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT *
+                FROM {$this->sessions_table}
+                WHERE session_key = %s
+                LIMIT 1",
+                $session_key
+            ),
+            ARRAY_A
+        );
+
+        return is_array( $row )
+            ? $row
+            : null;
+    }
 
 	public function get_result(
 		string $session_key,

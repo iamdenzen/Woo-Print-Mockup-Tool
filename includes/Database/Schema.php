@@ -68,7 +68,7 @@ final class Schema {
 
 		dbDelta( "CREATE TABLE {$results} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-			job_id VARCHAR(100) NOT NULL,
+			job_id VARCHAR(100) NULL,
 			session_key VARCHAR(64) NULL,
 			product_id BIGINT UNSIGNED NOT NULL,
 			image_path TEXT NULL,

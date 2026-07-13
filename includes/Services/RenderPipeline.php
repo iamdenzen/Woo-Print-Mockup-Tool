@@ -770,9 +770,7 @@ final class RenderPipeline {
 			'sku'        => $product
 				? $product->get_sku()
 				: '',
-			'image_url'  => (
-				string
-			) ( $result['image_url'] ?? '' ),
+			'image_url'  => (string) ( $result['image_url'] ?? '' ),
 		];
 	}
 
