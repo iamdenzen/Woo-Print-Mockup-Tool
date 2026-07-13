@@ -17,6 +17,10 @@ final class ArtworkUploadService {
 
 	private const MAX_FILE_SIZE = 10 * MB_IN_BYTES;
 
+	private const MAX_IMAGE_WIDTH  = 8000;
+	private const MAX_IMAGE_HEIGHT = 8000;
+	private const MAX_IMAGE_PIXELS = 20_000_000;
+
 	public function handle_upload(
 		array $file,
 		string $context = 'api'
@@ -142,6 +146,14 @@ final class ArtworkUploadService {
 				];
 			}
 
+			$dimensions = $this->validate_image_dimensions(
+				$temp_path
+			);
+
+			if ( empty( $dimensions['success'] ) ) {
+				return $dimensions;
+			}
+
 			$result = $this->store_file(
 				$temp_path,
 				$mime_type,
@@ -252,10 +264,111 @@ final class ArtworkUploadService {
 			];
 		}
 
+		$dimensions = $this->validate_image_dimensions(
+			$file['tmp_name']
+		);
+
+		if ( empty( $dimensions['success'] ) ) {
+			return $dimensions;
+		}
+
 		return [
 			'success' => true,
 			'mime'    => $mime_type,
+			'width'   => $dimensions['width'],
+			'height'  => $dimensions['height'],
 		];
+	}
+
+	private function validate_image_dimensions(
+		string $path
+	): array {
+		$image_size = $this->get_image_dimensions( $path );
+
+		if ( ! $image_size ) {
+			return [
+				'success' => false,
+				'error'   => __(
+					'Artwork image dimensions could not be determined.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
+
+		$width  = absint( $image_size[0] ?? 0 );
+		$height = absint( $image_size[1] ?? 0 );
+
+		if ( $width <= 0 || $height <= 0 ) {
+			return [
+				'success' => false,
+				'error'   => __(
+					'Artwork image has invalid dimensions.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
+
+		if (
+			$width > self::MAX_IMAGE_WIDTH
+			|| $height > self::MAX_IMAGE_HEIGHT
+		) {
+			return [
+				'success' => false,
+				'error'   => sprintf(
+					/* translators: 1: max width, 2: max height */
+					__(
+						'Artwork image dimensions must not exceed %1$d × %2$d pixels.',
+						'woo-print-mockup-tool'
+					),
+					self::MAX_IMAGE_WIDTH,
+					self::MAX_IMAGE_HEIGHT
+				),
+			];
+		}
+
+		$pixel_count = $width * $height;
+
+		if ( $pixel_count > self::MAX_IMAGE_PIXELS ) {
+			return [
+				'success' => false,
+				'error'   => sprintf(
+					/* translators: %d: maximum megapixels */
+					__(
+						'Artwork image must not exceed %d megapixels.',
+						'woo-print-mockup-tool'
+					),
+					(int) floor(
+						self::MAX_IMAGE_PIXELS / 1_000_000
+					)
+				),
+			];
+		}
+
+		return [
+			'success' => true,
+			'width'   => $width,
+			'height'  => $height,
+			'pixels'  => $pixel_count,
+		];
+	}
+
+
+	private function get_image_dimensions(
+		string $path
+	): array|false {
+		if ( function_exists( 'wp_getimagesize' ) ) {
+			$image_size = wp_getimagesize( $path );
+
+			if ( is_array( $image_size ) ) {
+				return $image_size;
+			}
+		}
+
+		$image_size = @getimagesize( $path );
+
+		return is_array( $image_size )
+			? $image_size
+			: false;
 	}
 
 	private function store_file(
@@ -302,6 +415,18 @@ final class ArtworkUploadService {
 			];
 		}
 
+		$dimensions = $this->get_image_dimensions(
+			$target_path
+		);
+
+		$width = is_array( $dimensions )
+			? absint( $dimensions[0] ?? 0 )
+			: 0;
+
+		$height = is_array( $dimensions )
+			? absint( $dimensions[1] ?? 0 )
+			: 0;
+
 		return [
 			'success' => true,
 			'path'    => $target_path,
@@ -315,6 +440,8 @@ final class ArtworkUploadService {
 				$target_path
 			),
 			'mime'    => $mime_type,
+			'width'   => $width,
+			'height'  => $height,
 		];
 	}
 
