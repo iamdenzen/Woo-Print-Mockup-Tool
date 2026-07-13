@@ -42,12 +42,12 @@
 				result.innerHTML = '';
 			}
 
-			return fetch(wpmtFrontend.restUrl + 'preview', {
+			return fetch(WPMTFrontend.restUrl + 'preview', {
 				method: 'POST',
 				body: formData,
 				credentials: 'same-origin',
 				headers: {
-					'X-WP-Nonce': wpmtFrontend.restNonce
+					'X-WP-Nonce': WPMTFrontend.nonce
 				}
 			})
 				.then(function (response) {
