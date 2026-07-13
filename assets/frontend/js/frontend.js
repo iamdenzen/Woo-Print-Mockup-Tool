@@ -42,7 +42,7 @@
 				result.innerHTML = '';
 			}
 
-			return fetch(WPMTFrontend.restUrl + 'preview', {
+			return fetch(WPMTFrontend.restUrl, {
 				method: 'POST',
 				body: formData,
 				credentials: 'same-origin',
