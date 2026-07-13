@@ -2,6 +2,7 @@
 
 namespace WooPrintMockupTool\Api;
 
+use WooPrintMockupTool\Services\CustomerSessionService;
 use WooPrintMockupTool\Services\RenderPipeline;
 use WooPrintMockupTool\Services\PreviewRateLimiter;
 use WP_Error;
@@ -88,27 +89,56 @@ final class CustomerPreviewController {
 			);
 		}
 
-		$rate_limit = ( new PreviewRateLimiter() )->consume( $request );
 
-		if ( is_wp_error( $rate_limit ) ) {
-			$status = $rate_limit->get_error_data();
+		/*
+		 * Only consume a rate-limit attempt when a new upload
+		 * is submitted.
+		 *
+		 * Cached/session preview restoration must be free.
+		 */
+		if ( is_array( $artwork_file ) ) {
+			$rate_limit = (
+				new PreviewRateLimiter()
+			)->consume( $request );
 
+			if ( is_wp_error( $rate_limit ) ) {
+				$data = $rate_limit->get_error_data();
+
+				return new WP_REST_Response(
+					[
+						'status' => 'error',
+						'error'  => $rate_limit
+							->get_error_message(),
+					],
+					absint(
+						$data['status'] ?? 429
+					)
+				);
+			}
+		}
+
+
+		$session_key = (
+			new CustomerSessionService()
+		)->get_session_key();
+
+		if ( '' === $session_key ) {
 			return new WP_REST_Response(
 				[
 					'status' => 'error',
-					'error'  => $rate_limit->get_error_message(),
+					'error'  => __(
+						'Customer session could not be initialized.',
+						'woo-print-mockup-tool'
+					),
 				],
-				absint( $status['status'] ?? 429 )
+				500
 			);
 		}
 
-		$result = ( new RenderPipeline() )->run_api_job(
-			'preview-' . wp_generate_uuid4(),
-			[
-				'file' => $files['artwork_file'],
-			],
-			[ $product_id ],
-			''
+		$result = ( new RenderPipeline() )->run_customer_preview(
+			$session_key,
+			$product_id,
+			$artwork_file
 		);
 
 		return new WP_REST_Response(

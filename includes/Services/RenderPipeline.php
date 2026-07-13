@@ -14,12 +14,14 @@ final class RenderPipeline {
 	private RenderJobRepository $jobs;
 	private ArtworkUploadService $uploads;
 	private RendererFactory $renderer_factory;
+	private ArtworkSessionRepository $artwork_sessions;
 
 	public function __construct() {
 		$this->configs          = new ProductConfigRepository();
 		$this->jobs             = new RenderJobRepository();
 		$this->uploads          = new ArtworkUploadService();
 		$this->renderer_factory = new RendererFactory();
+		$this->artwork_sessions = new ArtworkSessionRepository();
 	}
 
 	public function run_api_job( 
@@ -467,4 +469,367 @@ final class RenderPipeline {
 			@unlink( $path );
 		}
 	}
+
+	public function run_customer_preview(
+		string $session_key,
+		int $product_id,
+		?array $artwork_file = null
+	): array {
+		$session_key = sanitize_text_field(
+			$session_key
+		);
+
+		$product_id = absint( $product_id );
+
+		if ( '' === $session_key ) {
+			return [
+				'success' => false,
+				'status'  => 'error',
+				'error'   => __(
+					'Customer session could not be identified.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
+
+		if ( ! $product_id ) {
+			return [
+				'success' => false,
+				'status'  => 'error',
+				'error'   => __(
+					'Product ID is required.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
+
+		/*
+		* A new upload replaces the currently active artwork.
+		*/
+		if ( is_array( $artwork_file ) ) {
+			$upload = $this->uploads->handle_upload(
+				$artwork_file,
+				'customer'
+			);
+
+			if ( empty( $upload['success'] ) ) {
+				return $upload;
+			}
+
+			$this->replace_customer_artwork(
+				$session_key,
+				$upload
+			);
+		}
+
+		$session = $this->artwork_sessions
+			->get_by_session_key( $session_key );
+
+		if ( ! $session ) {
+			return [
+				'success'     => true,
+				'status'      => 'no_artwork',
+				'has_artwork' => false,
+				'results'     => [],
+			];
+		}
+
+		$existing_result = $this->artwork_sessions
+			->get_result(
+				$session_key,
+				$product_id
+			);
+
+		if ( $existing_result ) {
+			return [
+				'success'     => true,
+				'status'      => 'success',
+				'has_artwork' => true,
+				'cached'      => true,
+				'results'     => [
+					$this->format_customer_result(
+						$existing_result
+					),
+				],
+			];
+		}
+
+		$artwork_path = (
+			string
+		) ( $session['artwork_path'] ?? '' );
+
+		if (
+			'' === $artwork_path
+			|| ! is_readable( $artwork_path )
+		) {
+			$this->clear_customer_session(
+				$session_key
+			);
+
+			return [
+				'success'     => true,
+				'status'      => 'no_artwork',
+				'has_artwork' => false,
+				'results'     => [],
+			];
+		}
+
+		$result = $this->render_customer_product(
+			$session_key,
+			$product_id,
+			$artwork_path
+		);
+
+		return [
+			'success'     => ! empty( $result['success'] ),
+			'status'      => ! empty( $result['success'] )
+				? 'success'
+				: 'error',
+			'has_artwork' => true,
+			'cached'      => false,
+			'results'     => [
+				$result,
+			],
+		];
+	}
+
+	private function replace_customer_artwork(
+		string $session_key,
+		array $upload
+	): void {
+		$existing = $this->artwork_sessions
+			->get_by_session_key( $session_key );
+
+		if (
+			$existing
+			&& ! empty( $existing['artwork_path'] )
+		) {
+			$this->delete_customer_file(
+				(string) $existing['artwork_path']
+			);
+		}
+
+		$results = $this->artwork_sessions
+			->get_results( $session_key );
+
+		foreach ( $results as $result ) {
+			if ( ! empty( $result['image_path'] ) ) {
+				$this->delete_customer_file(
+					(string) $result['image_path']
+				);
+			}
+		}
+
+		$this->artwork_sessions->delete_results(
+			$session_key
+		);
+
+		$this->artwork_sessions->upsert(
+			$session_key,
+			[
+				'artwork_path' => $upload['path'],
+				'artwork_hash' => $upload['hash'],
+			]
+		);
+	}
+
+
+	private function render_customer_product(
+		string $session_key,
+		int $product_id,
+		string $artwork_path
+	): array {
+		$product = wc_get_product( $product_id );
+
+		$sku = $product
+			? $product->get_sku()
+			: '';
+
+		$config = $this->configs->get_by_product_id(
+			$product_id
+		);
+
+		if (
+			! $config
+			|| empty( $config['enabled'] )
+		) {
+			return [
+				'success'    => false,
+				'product_id' => $product_id,
+				'sku'        => $sku,
+				'error'      => __(
+					'Product is not configured for mockup rendering.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
+
+		$mockup_path = $this->get_mockup_image_path(
+			$config,
+			$product_id
+		);
+
+		if ( '' === $mockup_path ) {
+			return [
+				'success'    => false,
+				'product_id' => $product_id,
+				'sku'        => $sku,
+				'error'      => __(
+					'Mockup image could not be found.',
+					'woo-print-mockup-tool'
+				),
+			];
+		}
+
+		UploadDirectories::ensure();
+
+		$output_dir = UploadDirectories::session_results_dir(
+			$session_key
+		);
+
+		wp_mkdir_p( $output_dir );
+
+		$output_filename = sanitize_file_name(
+			$product_id
+			. '-'
+			. wp_generate_uuid4()
+			. '.png'
+		);
+
+		$output_path = trailingslashit(
+			$output_dir
+		) . $output_filename;
+
+		$output_url = trailingslashit(
+			UploadDirectories::base_url()
+		)
+			. 'results/sessions/'
+			. rawurlencode( $session_key )
+			. '/'
+			. rawurlencode( $output_filename );
+
+		$renderer = $this->renderer_factory->make();
+
+		$render_result = $renderer->render(
+			[
+				'product_id'     => $product_id,
+				'mockup_path'    => $mockup_path,
+				'artwork_path'   => $artwork_path,
+				'placement_data' => is_array(
+					$config['placement_data'] ?? null
+				)
+					? $config['placement_data']
+					: [],
+				'render_mode'    => sanitize_key(
+					$config['render_mode'] ?? 'color'
+				),
+				'output_path'    => $output_path,
+			]
+		);
+
+		if ( empty( $render_result['success'] ) ) {
+			return [
+				'success'    => false,
+				'product_id' => $product_id,
+				'sku'        => $sku,
+				'error'      => $render_result['error']
+					?? __(
+						'Preview render failed.',
+						'woo-print-mockup-tool'
+					),
+			];
+		}
+
+		$this->artwork_sessions->add_result(
+			$session_key,
+			$product_id,
+			$output_path,
+			$output_url
+		);
+
+		return [
+			'success'    => true,
+			'product_id' => $product_id,
+			'sku'        => $sku,
+			'image_url'  => $output_url,
+		];
+	}
+
+	private function format_customer_result(
+		array $result
+	): array {
+		$product_id = absint(
+			$result['product_id'] ?? 0
+		);
+
+		$product = $product_id
+			? wc_get_product( $product_id )
+			: false;
+
+		return [
+			'success'    => true,
+			'product_id' => $product_id,
+			'sku'        => $product
+				? $product->get_sku()
+				: '',
+			'image_url'  => (
+				string
+			) ( $result['image_url'] ?? '' ),
+		];
+	}
+
+	private function clear_customer_session(
+		string $session_key
+	): void {
+		$session = $this->artwork_sessions
+			->get_by_session_key( $session_key );
+
+		if (
+			$session
+			&& ! empty( $session['artwork_path'] )
+		) {
+			$this->delete_customer_file(
+				(string) $session['artwork_path']
+			);
+		}
+
+		$results = $this->artwork_sessions
+			->get_results( $session_key );
+
+		foreach ( $results as $result ) {
+			if ( ! empty( $result['image_path'] ) ) {
+				$this->delete_customer_file(
+					(string) $result['image_path']
+				);
+			}
+		}
+
+		$this->artwork_sessions->delete_results(
+			$session_key
+		);
+
+		$this->artwork_sessions->delete_session(
+			$session_key
+		);
+	}
+
+	private function delete_customer_file(
+		string $path
+	): void {
+		$path = wp_normalize_path( $path );
+		$base = wp_normalize_path(
+			UploadDirectories::base_dir()
+		);
+
+		if ( 0 !== strpos( $path, $base ) ) {
+			return;
+		}
+
+		if ( is_file( $path ) ) {
+			@unlink( $path );
+		}
+	}
+
+	
+
 }

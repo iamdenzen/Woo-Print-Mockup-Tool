@@ -14,54 +14,108 @@
 		var status = uploader.querySelector('.wpmt-preview-status');
 		var result = uploader.querySelector('.wpmt-preview-result');
 
-		button.addEventListener('click', function () {
-			var file = fileInput.files[0];
-
-			if (!file) {
-				status.textContent = 'Please select an artwork file first.';
+		function renderPreview(preview) {
+			if (!preview || !preview.success || !preview.image_url) {
 				return;
 			}
 
+			result.innerHTML =
+				'<img src="' +
+				preview.image_url +
+				'" alt="Product preview" />';
+
+			status.textContent = 'Preview generated.';
+		}
+
+		function requestPreview(file, restoring) {
 			var formData = new FormData();
+
 			formData.append('product_id', productId);
-			formData.append('artwork_file', file);
 
-			button.disabled = true;
-			status.textContent = 'Generating preview...';
-			result.innerHTML = '';
+			if (file) {
+				formData.append('artwork_file', file);
+			}
 
-			fetch(WPMTFrontend.restUrl, {
+			if (!restoring) {
+				button.disabled = true;
+				status.textContent = 'Generating preview...';
+				result.innerHTML = '';
+			}
+
+			return fetch(wpmtFrontend.restUrl + 'preview', {
 				method: 'POST',
 				body: formData,
 				credentials: 'same-origin',
 				headers: {
-					'X-WP-Nonce': WPMTFrontend.nonce
+					'X-WP-Nonce': wpmtFrontend.restNonce
 				}
 			})
 				.then(function (response) {
-					return response.json();
+					return response.json().then(function (data) {
+						return {
+							ok: response.ok,
+							status: response.status,
+							data: data
+						};
+					});
 				})
-				.then(function (data) {
-					var preview = data.results && data.results[0];
+				.then(function (response) {
+					var data = response.data;
 
-					if (!preview || !preview.success) {
-						status.textContent = preview && preview.error
-							? preview.error
-							: 'Preview could not be generated.';
+					if (!response.ok) {
+						throw new Error(
+							data.error ||
+							'Preview could not be generated.'
+						);
+					}
+
+					if (data.status === 'no_artwork') {
+						if (restoring) {
+							status.textContent = '';
+						}
+
 						return;
 					}
 
-					status.textContent = 'Preview generated.';
+					var preview = data.results && data.results[0];
 
-					result.innerHTML =
-						'<img src="' + preview.image_url + '" alt="Product preview" />';
+					if (!preview || !preview.success) {
+						throw new Error(
+							preview && preview.error
+								? preview.error
+								: 'Preview could not be generated.'
+						);
+					}
+
+					renderPreview(preview);
 				})
-				.catch(function () {
-					status.textContent = 'Something went wrong while generating the preview.';
+				.catch(function (error) {
+					status.textContent = error.message ||
+						'Something went wrong while generating the preview.';
 				})
 				.finally(function () {
 					button.disabled = false;
 				});
+		}
+
+		button.addEventListener('click', function () {
+			var file = fileInput.files[0];
+
+			if (!file) {
+				status.textContent =
+					'Please select an artwork file first.';
+				return;
+			}
+
+			requestPreview(file, false);
 		});
+
+		/*
+		 * Restore an existing artwork/preview on page load.
+		 *
+		 * If this product has no cached result yet but the
+		 * session has artwork, the server renders it now.
+		 */
+		requestPreview(null, true);
 	});
 })();
